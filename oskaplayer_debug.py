@@ -1,3 +1,4 @@
+# Assignment 4
 # Student: Branden Lee
 
 # oska.py
@@ -6,13 +7,207 @@
 # movegen(['-----','--wb','-b-','--','-w-','bbbb','-b---'],'w')
 # movegen(['wwww','-b-','--','---','bbbb'],'b')
 
-from queue import PriorityQueue
+# oska.py
+# some examples:
+# oskaplayer(['wwww','---','--','---','bbbb'],'w',2)
+# oskaplayer(['-----','--wb','-b-','--','-w-','bbbb','-b---'],'b',2)
+# oskaplayer(['-----','--wb','-b-','--','-w-','bbbb','-b---'],'w',2)
+
+
+
+# Note: The first line of the array is 'w' side and the last line is 'b' side.
+# 'w' can only move towards 'b' side and 'b' can only move towards 'w' side
+
 import math
 
 
-# movegen function
-# generates moves given a state array and side
-# returns a list of serialized states
+# oskaplayer outputs the best next move that the designated player
+# can make from that given board position.
+# @param start_state_array 2n - 3 strings representing starting state
+# @param side character 'b' or 'w', which side to play
+# @param depth Max moves to look ahead
+# @return array of rows representing board for best move using minimax algorithm
+# @return None if no move possible
+def oskaplayer(start_state_array, side, depth):
+    # width = widest row size
+    width = validate_board(start_state_array)
+    if width is None:
+        print("Start state is invalid!")
+    elif side != 'w' and side != 'b':
+        print("Side is invalid! must be 'w' or 'b'.")
+    elif type(depth) != int and depth > 0:
+        print("Depth is invalid! must be an integer greater than 0.")
+    else:
+        start_state = State()
+        start_state.id = serialize(start_state_array)
+        start_state.side = side
+        start_state.g = 0
+        return_state = minimax_search(start_state, side, True, depth)
+        if return_state is None:
+            print("No next best move found.")
+            return None
+        else:
+            return_state_array = unserialize(return_state.id)
+            return return_state_array
+
+
+# MiniMax search implemented recursively
+# @param current_state current state object
+# @param side character 'b' or 'w', which side to play
+# @param depth initial max moves to look ahead
+# @return the best state object given the initial state object
+def minimax_search(current_state, side, side_flag, depth):
+    if side == 'b':
+        opponent = 'w'
+    else:
+        opponent = 'b'
+    if current_state.g == depth:
+        current_state.h = calculate_heuristic(current_state.id, side)
+        return current_state
+    if side_flag:
+        return_state = State()
+        return_state.h = -9999
+        state_array = unserialize(current_state.id)
+        new_state_list = movegen(state_array, side)
+        n = len(new_state_list)
+        for i in range(0, n):
+            child_state = State()
+            child_state.id = new_state_list[i]
+            child_state.g = current_state.g + 1
+            child_state = minimax_search(child_state, opponent, False, depth)
+            return_state = max(return_state, child_state)
+        # only first depth level returns new moves
+        if current_state.g == 0:
+            return return_state
+        # other depths just pass up the heuristic value
+        current_state.h = return_state.h
+        return current_state
+    if not side_flag:
+        return_state = State()
+        return_state.h = 9999
+        state_array = unserialize(current_state.id)
+        new_state_list = movegen(state_array, side)
+        n = len(new_state_list)
+        for i in range(0, n):
+            child_state = State()
+            child_state.id = new_state_list[i]
+            child_state.g = current_state.g + 1
+            child_state = minimax_search(child_state, opponent, True, depth)
+            return_state = min(return_state, child_state)
+            current_state.h = return_state.h
+        # only first depth level returns new moves
+        if current_state.g == 0:
+            return return_state
+        # other depths just pass up the heuristic value
+        current_state.h = return_state.h
+        return current_state
+
+
+# State class
+# holds state data
+# id = stringified representation
+# g = node depth
+# h = heuristic value
+# side = 'b' or 'w'
+class State:
+    __slots__ = ("id", "g", "h", "side")
+
+    def __init__(self):
+        self.id = ""
+        self.g = self.h = 0
+
+    # compare states by h = heuristic value
+    def __lt__(self, other):
+        return self.h < other.h
+
+
+# Check if the start board is valid.
+# @param start_state Array representing the state
+# @return width (widest row size) on success
+# @return None on validation failure
+def validate_board(start_state):
+    if type(start_state) is not list:
+        print("Error: initial state is not a list.")
+        return None
+    n_row0 = len(start_state[0])
+    if n_row0 < 4:
+        print("Error: first row must be at least width 4.")
+        return None
+    # depth maximum
+    row_depth = n_row0 - 2
+    n_row_last = n_row0 + 1
+    position = 0
+    for i in range(row_depth, -1, -1):
+        n_row_last = n_row_last - 1
+        for j in range(0, n_row_last):
+            position = position + 1
+    n_row_last = 2
+    n = -1 * row_depth - 1
+    for i in range(-1, n, -1):
+        n_row_last = n_row_last + 1
+        for j in range(0, n_row_last):
+            position = position + 1
+    positions_max = n_row0 * n_row0 + n_row0 - 4
+    if positions_max != position:
+        print("Error: expected", positions_max, "positions, but got", position, ".")
+        return None
+    return n_row0
+
+
+# Check win state
+# @param state_id string representing the state
+# @return false if no winner else returns 'w' or 'b' depending on who won
+def check_win_board(state_id):
+    pos_tot = len(state_id)
+    width = pos_tot_to_width(pos_tot)
+    state_id_beginning = state_id[0:pos_tot - width]
+    state_id_end = state_id[pos_tot - width:pos_tot]
+    # check all rows except last are 'w'
+    if state_id_beginning.find('w') == -1:
+        if state_id_end.find('w') == -1:
+            return 'b'
+        else:
+            return 'w'
+    # check all rows except last are 'b'
+    if state_id_beginning.find('b') == -1:
+        if state_id_end.find('b') == -1:
+            return 'w'
+        else:
+            return 'b'
+    return None
+
+
+# heuristic or static board evaluator
+# @param state_id string representing the state
+# @param side character 'b' or 'w', which side to play
+# @return Integer representing score of board
+# score = your side pieces - opponent side pieces
+# or if winning board then score = total positions on board
+# else if opponent wins then score = negative total positions on board
+def calculate_heuristic(state_id, side):
+    pos_tot = len(state_id)
+    if side == 'b':
+        opponent = 'w'
+    else:
+        opponent = 'b'
+    # winning board then score = total positions on board
+    side_win = check_win_board(state_id)
+    if side_win == side:
+        return pos_tot
+    elif side_win == opponent:
+        return -1 * pos_tot
+    num_b = state_id.count("b")
+    num_w = state_id.count("w")
+    score = 1
+    if side == 'b':
+        return num_b - num_w
+    return num_w - num_b
+
+
+# movegen function generates moves
+# @param state_array Array representing the state
+# @param side character 'b' or 'w', which side to play
+# @return List of serialized states.
 # it is up to the adversarial state search function in assignment 4
 # to remove states that have already been visited
 # Board position naming
@@ -58,11 +253,13 @@ def movegen(state_array, side):
                 new_state_id = try_bottom_right(state_id, side, opponent, rows_tot, pos, pos_row_table, -1)
                 if new_state_id is not None:
                     new_state_list.append(new_state_id)
-    printPath(new_state_list)
-    # return new_state_list
+    # DEBUG - DELETE IN FINAL SUBMISSION
+    # printPath(new_state_list)
+    return new_state_list
 
 
-# Returns unique state identifier
+# @param state_array Array representing the state
+# @return string representing the state
 # state[] example:
 #  -------------------
 # |  W |  W |  W |    |
@@ -81,7 +278,38 @@ def serialize(state_array):
     return ''.join(state_array)
 
 
-# Returns a python dictionary
+# unserialize() reverses as serialize()
+# @param state_id string representing the state
+# @return state_array Array representing the state
+def unserialize(start_state_id):
+    state_array = []
+    pos_tot = len(start_state_id)
+    width = pos_tot_to_width(pos_tot)
+    row_depth = width - 2
+    width_last = width
+    position = 0
+    # -row_depth to 0
+    for i in range(-1 * row_depth, 1):
+        str = ""
+        for j in range(0, width_last):
+            str += start_state_id[position]
+            position = position + 1
+        state_array.append(str)
+        width_last = width_last - 1
+    width_last = 3
+    # 1 to row_depth
+    for i in range(1, row_depth + 1):
+        str = ""
+        for j in range(0, width_last):
+            str += start_state_id[position]
+            position = position + 1
+        state_array.append(str)
+        width_last = width_last + 1
+    return state_array
+
+
+# @param width Max width of board.
+# @return python dictionary
 # that acts as table for position => row info
 def get_pos_row_table(width):
     pos_row_table = {}
@@ -265,7 +493,6 @@ def pos_to_row(pos, width):
 #  -------------------
 # |  B |  B |  B |  B |
 #  -------------------
-# pos_row_table is a hash table mapping position -> row
 def print_state(state_id):
     pos_tot = len(state_id)
     width = pos_tot_to_width(pos_tot)
@@ -288,44 +515,3 @@ def print_state(state_id):
             print(" |")
             print(' ' * 2 * (indent + 1), end='')
             print('-' * 3 * row_width)
-
-
-# writes the stateId to readable board to file
-def write_state(file_handle, state_id):
-    for i in range(0, 36):
-        file_handle.write(state_id[i])
-        if i % 6 == 5:
-            file_handle.write("\n")
-
-
-# Writes the path of states to the console.
-def printPath(path):
-    n = len(path)
-    for i in range(0, n):
-        print_state(path[i])
-        print("\n", end='')
-
-
-# Writes the path of states to a file.
-def write_path(file_handle, path):
-    n = len(path)
-    for i in range(0, n):
-        file_handle.write("Move: " + str(i) + "\n")
-        write_state(file_handle, path[i])
-        file_handle.write("\n")
-
-
-# FOR DEBUG USE
-# writes the parent state board to a file
-def debug_file_state(file_handle, state_pair, queue):
-    file_handle.write("==============================================\n")
-    file_handle.write("PriorityQueue.length = " + str(queue.qsize()) + "\n")
-    file_handle.write("Priority " + str(state_pair[0]) + "\n")
-    write_state(file_handle, state_pair[1].id)
-
-
-# FOR DEBUG USE
-# writes the child or successor state board to a file
-def debug_file_child_state(file_handle, state_pair):
-    file_handle.write("CHILD Priority " + str(state_pair[0]) + "\n")
-    write_state(file_handle, state_pair[1].id)
